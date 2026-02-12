@@ -1,8 +1,10 @@
+```
 eks-terraform-project/
 ├── main.tf        # The Brain: Where the resources are actually defined.
 ├── variables.tf   # The Dials: Settings you can change (like region or cluster name).
 ├── outputs.tf     # The Receipt: Information Terraform gives back (like the Cluster Endpoint).
 └── versions.tf    # The Rules: Specifies which version of Terraform/AWS to use.
+```
 
 
 ## Blueprint
