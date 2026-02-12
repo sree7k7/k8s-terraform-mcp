@@ -7,7 +7,7 @@ variable region {
 variable cluster_name {
   type        = string
   default     = "edge-cluster"
-  description = "EKS Cluster Name"
+  description = "EKS Cluster name"
 }
 
 variable cluster_version {
