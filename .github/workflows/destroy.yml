@@ -22,8 +22,13 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: eu-central-1
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: Terraform Init
-        run: terraform init
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          terraform init -backend-config="bucket=k8s-terraform-mcp-state-${ACCOUNT_ID}"
 
       - name: Terraform Destroy
         run: terraform destroy -auto-approve
