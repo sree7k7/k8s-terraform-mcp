@@ -1,0 +1,46 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: default
+spec:
+  template:
+    spec:
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"] # Try Spot first (cheaper), then On-Demand
+        - key: karpenter.k8s.aws/instance-category
+          operator: In
+          values: ["c", "m", "r"] # Allow C, M, and R class instances
+        - key: karpenter.k8s.aws/instance-generation
+          operator: Gt
+          values: ["2"]
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+  limits:
+    cpu: 1000 # Stop scaling if we hit 1000 CPUs (Cost protection)
+  disruption:
+    consolidationPolicy: WhenUnderutilized # Delete nodes if they are empty (Save money!)
+    expireAfter: 720h # Rotate nodes every 30 days
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: default
+spec:
+  amiFamily: AL2023 # Amazon Linux 2023
+  role: "KarpenterNodeRole-${edge-cluster}" # IMPORTANT: Use the actual role name from Terraform output
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "${edge-cluster}" # Looks for subnets with this tag
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "${edge-cluster}" # Looks for SGs with this tag
