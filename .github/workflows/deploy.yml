@@ -36,18 +36,28 @@ jobs:
           export REGION="eu-central-1"
 
           # 1. Create S3 Bucket
-          aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --create-bucket-configuration LocationConstraint=$REGION || true
+          if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+            echo "Creating bucket $BUCKET_NAME..."
+            aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --create-bucket-configuration LocationConstraint=$REGION
+          else
+            echo "Bucket $BUCKET_NAME already exists."
+          fi
 
           # 2. Enable Versioning (Crucial for recovering state if corrupted)
           aws s3api put-bucket-versioning --bucket $BUCKET_NAME --versioning-configuration Status=Enabled
 
           # 3. Create DynamoDB Table for Locking
-          aws dynamodb create-table \
-              --table-name terraform-locks \
-              --attribute-definitions AttributeName=LockID,AttributeType=S \
-              --key-schema AttributeName=LockID,KeyType=HASH \
-              --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 \
-              --region $REGION || true
+          if ! aws dynamodb describe-table --table-name terraform-locks --region "$REGION" >/dev/null 2>&1; then
+            echo "Creating DynamoDB table terraform-locks..."
+            aws dynamodb create-table \
+                --table-name terraform-locks \
+                --attribute-definitions AttributeName=LockID,AttributeType=S \
+                --key-schema AttributeName=LockID,KeyType=HASH \
+                --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 \
+                --region $REGION
+          else
+            echo "DynamoDB table terraform-locks already exists."
+          fi
 
       - name: Terraform Init
         run: |
