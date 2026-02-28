@@ -28,8 +28,9 @@ jobs:
           aws-region: eu-central-1
 
       - name: Terraform Init
-        run: terraform init
-
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          terraform init -backend-config="bucket=k8s-terraform-mcp-state-${ACCOUNT_ID}"
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve
