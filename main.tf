@@ -68,7 +68,7 @@ module "eks" {
   control_plane_subnet_ids = module.vpc.public_subnets
 
   # Access Entries (Modern Auth)
-  enable_cluster_creator_admin_permissions = true # Grants you (the creator) of the cluster admin permissions (Best Practice for initial setup)
+  enable_cluster_creator_admin_permissions = false # Grants you (the creator) of the cluster admin permissions (Best Practice for initial setup)
   cluster_endpoint_public_access           = true # Allows access to the cluster API from the internet (Required for EKS Anywhere / Remote Management)
   cluster_endpoint_private_access          = true # Allows access to the cluster API from within the VPC (Best Practice for security)
 
@@ -147,4 +147,8 @@ module "eks_blueprints_addons" {
     repository_username = "public.ecr.aws/karpenter"
     repository_password = ""      # Public repo, no password needed
   }
+  
+  # This creates the IAM Role Karpenter needs to launch EC2s on your behalf
+  # karpenter_enable_spot_termination          = true
+  # karpenter_enable_instance_profile_creation = true
 }
