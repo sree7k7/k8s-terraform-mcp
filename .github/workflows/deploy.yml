@@ -27,10 +27,30 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: eu-central-1
 
+      - name: Create Backend Infrastructure
+        run: |
+          export BUCKET_NAME="k8s-terraform-mcp-state-$(aws sts get-caller-identity --query "Account" --output text)"
+          export REGION="eu-central-1"
+
+          # 1. Create S3 Bucket
+          aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --create-bucket-configuration LocationConstraint=$REGION || true
+
+          # 2. Enable Versioning (Crucial for recovering state if corrupted)
+          aws s3api put-bucket-versioning --bucket $BUCKET_NAME --versioning-configuration Status=Enabled
+
+          # 3. Create DynamoDB Table for Locking
+          aws dynamodb create-table \
+              --table-name terraform-locks \
+              --attribute-definitions AttributeName=LockID,AttributeType=S \
+              --key-schema AttributeName=LockID,KeyType=HASH \
+              --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 \
+              --region $REGION || true
+
       - name: Terraform Init
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
           terraform init -backend-config="bucket=k8s-terraform-mcp-state-${ACCOUNT_ID}"
+
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve
