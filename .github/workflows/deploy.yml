@@ -25,7 +25,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: eu-central-1
+          aws-region: us-east-1
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -33,7 +33,7 @@ jobs:
       - name: Create Backend Infrastructure
         run: |
           export BUCKET_NAME="k8s-terraform-mcp-state-$(aws sts get-caller-identity --query "Account" --output text)"
-          export REGION="eu-central-1"
+          export REGION="us-east-1"
 
           # 1. Create S3 Bucket
           if ! aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then

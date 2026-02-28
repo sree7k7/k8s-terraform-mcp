@@ -13,6 +13,17 @@ terraform {
 # Fetch the current account ID dynamically
 data "aws_caller_identity" "current" {}
 
+provider "kubernetes" {
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name, "--region", var.region]
+  }
+}
+
 # This tells Terraform how to talk to your new EKS cluster
 provider "helm" {
   kubernetes {
@@ -23,7 +34,7 @@ provider "helm" {
     exec {
       api_version = "client.authentication.k8s.io/v1beta1"
       command     = "aws"
-      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name, "--region", var.region]
     }
   }
 }
@@ -149,12 +160,12 @@ module "eks_blueprints_addons" {
   }
   
   # Creates the IAM Role & Instance Profile for Karpenter nodes
-  karpenter_node = {
-    create = true
-  }
+  # karpenter_node = {
+  #   create = true
+  # }
 
-  # Creates the SQS queue for Spot termination handling
-  karpenter_sqs = {
-    create = true
-  }
+  # # Creates the SQS queue for Spot termination handling
+  # karpenter_sqs = {
+  #   create = true
+  # }
 }

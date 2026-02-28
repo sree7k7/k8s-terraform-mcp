@@ -1,6 +1,6 @@
 variable region {
   type        = string
-  default     = "eu-central-1"
+  default     = "us-east-1"
   description = "AWS region"
 }
 
@@ -24,7 +24,7 @@ variable vpc_cidr {
 
 variable vpc_azs {
   type        = list(string)
-  default     = ["eu-central-1a", "eu-central-1b"]
+  default     = ["us-east-1a", "us-east-1b"]
   description = "VPC AZs"
 }
 
