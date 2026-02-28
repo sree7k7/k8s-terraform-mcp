@@ -29,16 +29,17 @@ module "vpc" {
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
 
-  enable_nat_gateway = true
-  single_nat_gateway = true # Saves money in dev/learning environments
+  enable_nat_gateway = false # true when you need outbound internet access for private subnets (e.g. for EKS nodes to pull images)
+  single_nat_gateway = false # Saves money in dev/learning environments
+  map_public_ip_on_launch = true
 
   # Tags required for Load Balancer Controller
   public_subnet_tags = {
     "kubernetes.io/role/elb" = 1
+    "karpenter.sh/discovery" = var.cluster_name # Required for Karpenter to discover these subnets
   }
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
-    "karpenter.sh/discovery" = var.cluster_name # Required for Karpenter to discover these subnets
   }
 }
 
@@ -52,8 +53,8 @@ module "eks" {
 
   # Network settings, connects the cluster to the VPC
   vpc_id                   = module.vpc.vpc_id
-  subnet_ids               = module.vpc.private_subnets
-  control_plane_subnet_ids = module.vpc.private_subnets
+  subnet_ids               = module.vpc.public_subnets
+  control_plane_subnet_ids = module.vpc.public_subnets
 
   # Access Entries (Modern Auth)
   enable_cluster_creator_admin_permissions = true # Grants you (the creator) of the cluster admin permissions (Best Practice for initial setup)
@@ -80,18 +81,18 @@ module "eks" {
   eks_managed_node_groups = {
     initial = {
       min_size     = 1
-      max_size     = 3
-      desired_size = 2
+      max_size     = 2
+      desired_size = 1
 
       instance_types = ["t3.medium"]
-      capacity_type  = "ON_DEMAND"
+      capacity_type  = "SPOT" # use SPOT for cost savings in dev/learning environments, switch to ON_DEMAND for production workloads
       
       # Ensure nodes have enough disk space
       block_device_mappings = {
         xvda = {
           device_name = "/dev/xvda"
           ebs = {
-            volume_size           = 50
+            volume_size           = 20
             volume_type           = "gp3"
             delete_on_termination = true
           }

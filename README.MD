@@ -14,9 +14,10 @@ source  = "terraform-aws-modules/eks/aws"
 ```
 
 ## Security & Access
-enable_cluster_creator_admin_permissions = true: This ensures that you (the person running the Terraform command) actually have permission to log in and control the cluster after it is created.
-cluster_endpoint_public_access = true: This opens a secure door on the internet so you can send commands (using kubectl) from your laptop.
-cluster_endpoint_private_access = true: This opens a door inside your private network so your worker nodes can talk to the brain without going out to the public internet.
+
+**enable_cluster_creator_admin_permissions** = true: This ensures that you (the person running the Terraform command) actually have permission to log in and control the cluster after it is created.
+**cluster_endpoint_public_access** = true: This opens a secure door on the internet so you can send commands (using kubectl) from your laptop.
+**cluster_endpoint_private_access** = true: This opens a door inside your private network so your worker nodes can talk to the brain without going out to the public internet.
 
 ## permissions
 
