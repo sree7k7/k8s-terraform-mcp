@@ -101,6 +101,19 @@ gemini
 
 ## troubleshoot
 
+update your ~/.kube/config file to include the --profile sran-nice argument automatically
+````
+rm ~/.kube/config
+
+aws eks update-kubeconfig --region eu-central-1 --name edge-cluster
+
+# try later with user name
+aws eks update-kubeconfig --region eu-central-1 --name edge-cluster --profile <profile_name>
+
+e.g: aws eks update-kubeconfig --region eu-central-1 --name edge-cluster --profile test-user
+
+```
+
 ### Error: "the server has asked for the client to provide credentials"
 This indicates your AWS credentials have expired or your system clock is out of sync.
 1. Refresh credentials: `aws sso login`
