@@ -10,6 +10,8 @@ terraform {
   }
 }
 
+# Fetch the current account ID dynamically
+data "aws_caller_identity" "current" {}
 
 # This tells Terraform how to talk to your new EKS cluster
 provider "helm" {
@@ -109,6 +111,21 @@ module "eks" {
       }
     }
   }
+
+  # Grant your local AWS user admin access
+  access_entries = {
+    sran_nice = {
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/sran-nice"
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
 }
 
 
@@ -130,8 +147,4 @@ module "eks_blueprints_addons" {
     repository_username = "public.ecr.aws/karpenter"
     repository_password = ""      # Public repo, no password needed
   }
-  
-  # This creates the IAM Role Karpenter needs to launch EC2s on your behalf
-  karpenter_enable_spot_termination          = true
-  karpenter_enable_instance_profile_creation = true
 }
