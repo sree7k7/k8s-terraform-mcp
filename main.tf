@@ -157,15 +157,44 @@ module "eks_blueprints_addons" {
     chart_version       = "1.0.0" # Use v1+ (The stable version)
     repository_username = "public.ecr.aws/karpenter"
     repository_password = ""      # Public repo, no password needed
+    values = [yamlencode({
+      replicas = 1 # Start with 1 replica for dev/learning, increase for production.
+    })]
   }
   
   # Creates the IAM Role & Instance Profile for Karpenter nodes
-  # karpenter_node = {
-  #   create = true
-  # }
+  karpenter_node = {
+    create = true
+  }
 
-  # # Creates the SQS queue for Spot termination handling
-  # karpenter_sqs = {
-  #   create = true
-  # }
+  # Creates the SQS queue for Spot termination handling
+  karpenter_sqs = {
+    create = true
+  }
+}
+
+## monitoring stack (Prometheus + Grafana)
+# 1. Create a dedicated namespace for monitoring
+resource "kubernetes_namespace_v1" "monitoring" {
+  metadata {
+    name = "monitoring"
+  }
+  depends_on = [module.eks]
+}
+
+# 2. Install the Prometheus & Grafana Bundle
+resource "helm_release" "kube_prometheus_stack" {
+  name       = "kube-prometheus-stack"
+  repository = "https://prometheus-community.github.io/helm-charts"
+  chart      = "kube-prometheus-stack"
+  namespace  = kubernetes_namespace_v1.monitoring.metadata[0].name
+  
+  # Set it to wait until the cluster is fully ready before installing
+  depends_on = [module.eks, kubernetes_namespace_v1.monitoring]
+
+  # Optional: Disable alertmanager for a lighter dev setup, or keep it true for production
+  set {
+    name  = "alertmanager.enabled"
+    value = "false" 
+  }
 }

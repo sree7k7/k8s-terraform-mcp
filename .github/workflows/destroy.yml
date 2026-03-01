@@ -30,5 +30,17 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
           terraform init -backend-config="bucket=k8s-terraform-mcp-state-${ACCOUNT_ID}"
 
+      # 1. Connect to the cluster
+      - name: Update Kubeconfig
+        run: aws eks update-kubeconfig --region us-east-1 --name edge-cluster
+
+      # 2. THE CRITICAL ADDITION: Nuke Karpenter nodes first
+      - name: Terminate Karpenter Ghost Nodes
+        run: |
+          kubectl delete nodepool --all --ignore-not-found
+          kubectl delete ec2nodeclass --all --ignore-not-found
+          sleep 60 # Give AWS a minute to actually terminate the EC2 instances
+
+      # 3. Proceed with normal Terraform Destroy
       - name: Terraform Destroy
         run: terraform destroy -auto-approve
