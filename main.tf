@@ -126,7 +126,7 @@ module "eks" {
   # Grant your local AWS user admin access
   access_entries = {
     sran_nice = {
-      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/aws-to-github"
+      principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.git_role_name}"
       policy_associations = {
         admin = {
           policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"

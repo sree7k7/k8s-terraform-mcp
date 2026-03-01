@@ -4,6 +4,12 @@ variable region {
   description = "AWS region"
 }
 
+variable git_role_name {
+  type        = string
+  default     = "aws-to-github"
+  description = "IAM Role name for GitHub Actions to assume for cluster access"
+}
+
 variable cluster_name {
   type        = string
   default     = "edge-cluster"
