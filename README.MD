@@ -6,6 +6,91 @@ eks-terraform-project/
 └── versions.tf    # The Rules: Specifies which version of Terraform/AWS to use.
 ```
 
+## Architecture design
+
+```mermaid
+graph TB
+    %% Styling
+    classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:black;
+    classDef k8s fill:#326CE5,stroke:#fff,stroke-width:2px,color:white;
+    classDef external fill:#eee,stroke:#333,stroke-width:2px;
+    classDef monitor fill:#E6522C,stroke:#fff,stroke-width:2px,color:white;
+    classDef karp fill:#4C4C4C,stroke:#fff,stroke-width:2px,color:white;
+
+    %% External Tools
+    subgraph External [Your Local Machine & CI/CD]
+        Dev[💻 Developer / WSL Terminal<br/><i>Initiates Commands</i>]:::external
+        Browser[🌐 Web Browser<br/><i>Accesses Dashboards</i>]:::external
+        GH[🐙 GitHub Actions Pipeline<br/><i>Automates Terraform Apply</i>]:::external
+        Gemini[🤖 Gemini MCP Agent<br/><i>AI Cluster Analysis</i>]:::external
+    end
+
+    %% AWS Cloud Layer
+    subgraph AWS [☁️ AWS Cloud]
+        
+        subgraph TF_Backend [Terraform Backend]
+            S3[(🪣 S3: tfstate<br/><i>Stores Terraform State</i>)]:::aws
+            DDB[(🗄️ DynamoDB: state-locks<br/><i>Prevents Concurrent Runs</i>)]:::aws
+        end
+
+        EC2_API[⚙️ AWS EC2 API<br/><i>Provisions VMs</i>]:::aws
+        IAM[🔑 AWS IAM / OIDC Providers<br/><i>Manages Access & Roles</i>]:::aws
+
+        %% Virtual Private Cloud
+        subgraph VPC [🌐 VPC: eks-vpc]
+            
+            CP((🧠 EKS Control Plane<br/><i>API Server & Scheduler</i>)):::k8s
+            
+            %% Kubernetes Data Plane (Worker Nodes)
+            subgraph DataPlane [EC2 Worker Nodes / Data Plane]
+                
+                Karpenter[🏗️ Karpenter Autoscaler<br/><i>Launches Nodes for Pods</i>]:::karp
+                
+                subgraph Monitoring [Namespace: monitoring]
+                    Prometheus[(📊 Prometheus<br/><i>Stores Metrics</i>)]:::monitor
+                    Grafana[📈 Grafana UI<br/><i>Visualizes Metrics</i>]:::monitor
+                    Exporters[⚙️ Node & Kube-State Exporters<br/><i>Collects Hardware Stats</i>]:::monitor
+                end
+                
+                subgraph Apps [Namespace: default]
+                    Nginx[📦 NGINX / Microservices<br/><i>Your Applications</i>]:::k8s
+                end
+            end
+        end
+    end
+
+    %% --------------------------------
+    %% Data Flow Connections
+    %% --------------------------------
+
+    %% Infrastructure & State Flow
+    Dev -- "1. terraform apply" --> TF_Backend
+    GH -- "1. terraform apply" --> TF_Backend
+    TF_Backend -. "Builds" .-> VPC
+    TF_Backend -. "Builds" .-> CP
+
+    %% Authentication Flow
+    Dev -. "awsume **username**" .-> IAM
+    GH -. "OIDC Role Assume" .-> IAM
+    CP -. "Trusts" .-> IAM
+
+    %% Kubernetes Control Flow
+    Dev -- "2. kubectl commands" --> CP
+    Gemini -- "Reads Cluster State via MCP" --> CP
+    CP -- "Schedules Pods" --> DataPlane
+
+    %% Karpenter Autoscaling Flow
+    Karpenter -- "A. Watches for Pending Pods" --> CP
+    Karpenter -- "B. Requests Compute" --> EC2_API
+    EC2_API -- "C. Provisions New Nodes" --> DataPlane
+
+    %% Observability Data Flow
+    Exporters -- "Exposes Hardware Metrics" --> Prometheus
+    Prometheus -- "Scrapes Data" --> Apps
+    Prometheus -- "Scrapes Data" --> CP
+    Grafana -- "PromQL Queries" --> Prometheus
+    Browser -- "Port-Forward 8080" --> Grafana
+```
 
 ## Blueprint
 
@@ -17,7 +102,7 @@ source  = "terraform-aws-modules/eks/aws"
 
 ```
 export BUCKET_NAME="k8s-terraform-mcp-state-$(aws sts get-caller-identity --query "Account" --output text)"
-export REGION="eu-central-1"
+export REGION="us-east-1"
 
 # 1. Create S3 Bucket
 aws s3api create-bucket --bucket $BUCKET_NAME --region $REGION --create-bucket-configuration LocationConstraint=$REGION
@@ -41,7 +126,15 @@ terraform init -backend-config="bucket=${BUCKET_NAME}"
 terraform plan -out plan.out
 terraform apply -auto-approve
 
+# create a temporary "tunnel" from your terminal to the cluster.
+kubectl port-forward svc/kube-prometheus-stack-grafana 8080:80 -n monitoring
+
 ```
+
+1. Open your web browser and go to: http://localhost:8080
+2. Username: admin
+3. Get passwd with cmd ```kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo```
+
 
 ## Essential Utilities
 
@@ -98,19 +191,23 @@ gemini
 /mcp list
 ```
 
+#### monitoring
+
+To get grafane passwd
+kubectl get secret -n monitoring kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
 
 ## troubleshoot
 
 update your ~/.kube/config file to include the --profile sran-nice argument automatically
-````
+```
 rm ~/.kube/config
 
-aws eks update-kubeconfig --region eu-central-1 --name edge-cluster
+aws eks update-kubeconfig --region us-east-1 --name edge-cluster
 
 # try later with user name
-aws eks update-kubeconfig --region eu-central-1 --name edge-cluster --profile <profile_name>
+aws eks update-kubeconfig --region us-east-1 --name edge-cluster --profile <profile_name>
 
-e.g: aws eks update-kubeconfig --region eu-central-1 --name edge-cluster --profile test-user
+e.g: aws eks update-kubeconfig --region us-east-1 --name edge-cluster --profile test-user
 
 ```
 
@@ -118,19 +215,13 @@ e.g: aws eks update-kubeconfig --region eu-central-1 --name edge-cluster --profi
 This indicates your AWS credentials have expired or your system clock is out of sync.
 1. Refresh credentials: `aws sso login`
 2. Sync clock (WSL): `sudo hwclock -s`
-3. Update kubeconfig: `aws eks update-kubeconfig --region eu-central-1 --name edge-cluster`
-
-### Terraform Destroy Fails
-If `terraform destroy` fails with "DependencyViolation" or "Network interface in use":
-1. **Karpenter Nodes**: Terraform cannot delete instances created by Karpenter. Go to AWS Console > EC2 and terminate them manually.
-2. **Load Balancers**: If you deployed services, delete their Load Balancers manually in AWS Console > EC2 > Load Balancers.
-3. **Retry**: Run `terraform destroy` again.
+3. Update kubeconfig: `aws eks update-kubeconfig --region us-east-1 --name edge-cluster`
 
 ### Manual Cleanup (CLI)
-If Terraform state is lost, use these commands to clean up (ensure you are in `eu-central-1`):
+If Terraform state is lost, use these commands to clean up (ensure you are in `us-east-1`):
 
 ```bash
-export AWS_REGION=eu-central-1
+export AWS_REGION=us-east-1
 export CLUSTER_NAME=edge-cluster
 
 # 1. Delete Node Groups
@@ -155,3 +246,4 @@ If `aws sso login` fails to open a browser:
 1. Install wslu: `sudo apt install wslu`
 2. Set browser: `export BROWSER=wslview`
 3. Sync clock: `sudo hwclock -s`
+

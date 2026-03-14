@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: greedy-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: greedy-nginx
+  template:
+    metadata:
+      labels:
+        app: greedy-nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "256Mi"

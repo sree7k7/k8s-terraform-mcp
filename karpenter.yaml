@@ -14,10 +14,10 @@ spec:
           values: ["linux"]
         - key: karpenter.sh/capacity-type
           operator: In
-          values: ["spot", "on-demand"] # Try Spot first (cheaper), then On-Demand
+          values: ["spot", "on-demand"]
         - key: karpenter.k8s.aws/instance-category
           operator: In
-          values: ["c", "m", "r"] # Allow C, M, and R class instances
+          values: ["c", "m", "r", "t"]
         - key: karpenter.k8s.aws/instance-generation
           operator: Gt
           values: ["2"]
@@ -25,22 +25,32 @@ spec:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: default
+      
+      # FIX 1: expireAfter was moved here in v1
+      expireAfter: 720h 
+      
   limits:
-    cpu: 1000 # Stop scaling if we hit 1000 CPUs (Cost protection)
+    cpu: 1000
   disruption:
-    consolidationPolicy: WhenUnderutilized # Delete nodes if they are empty (Save money!)
-    expireAfter: 720h # Rotate nodes every 30 days
+    # FIX 2: Updated to the new v1 policies
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
 ---
 apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: default
 spec:
-  amiFamily: AL2023 # Amazon Linux 2023
-  role: "KarpenterNodeRole-${edge-cluster}" # IMPORTANT: Use the actual role name from Terraform output
+  amiFamily: AL2023
+  role: "KarpenterNodeRole-edge-cluster"
+  
+  # FIX 3: amiSelectorTerms is now strictly required in v1
+  amiSelectorTerms:
+    - alias: al2023@latest
+    
   subnetSelectorTerms:
     - tags:
-        karpenter.sh/discovery: "${edge-cluster}" # Looks for subnets with this tag
+        karpenter.sh/discovery: "edge-cluster"
   securityGroupSelectorTerms:
     - tags:
-        karpenter.sh/discovery: "${edge-cluster}" # Looks for SGs with this tag
+        kubernetes.io/cluster/edge-cluster: "owned"
