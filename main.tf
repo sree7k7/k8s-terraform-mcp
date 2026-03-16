@@ -1,3 +1,8 @@
+
+## important:
+## This Terraform configuration sets up an EKS cluster with Karpenter for dynamic node provisioning, and also installs the kube-prometheus-stack for monitoring. It uses the AWS provider to manage resources in your AWS account, and the Kubernetes provider to interact with the EKS cluster. 1
+## The ec2 instance are in public subnets and have associatePublicIPAddress set to true, which allows them to have public IPs for direct internet access. This is useful for learning and experimentation, but in production environments, you would typically place nodes in private subnets without public IPs for better security.
+
 provider "aws" {
   region = var.region
 }
