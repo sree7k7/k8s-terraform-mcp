@@ -125,6 +125,9 @@ aws dynamodb create-table \
 terraform init -backend-config="bucket=${BUCKET_NAME}"
 terraform plan -out plan.out
 terraform apply -auto-approve
+aws eks update-kubeconfig --region us-east-1 --name edge-cluster
+
+kubectl apply kartpenter.yaml
 
 # create a temporary "tunnel" from your terminal to the cluster.
 kubectl port-forward svc/kube-prometheus-stack-grafana 8080:80 -n monitoring
@@ -208,7 +211,13 @@ aws eks update-kubeconfig --region us-east-1 --name edge-cluster
 aws eks update-kubeconfig --region us-east-1 --name edge-cluster --profile <profile_name>
 
 e.g: aws eks update-kubeconfig --region us-east-1 --name edge-cluster --profile test-user
+```
+### Error: "Error acquiring the state lock"
 
+
+**Force Unlock**: Use the `force-unlock` command with the ID from the previous step.
+```bash
+terraform force-unlock <THIS-IS-THE-LOCK-ID>
 ```
 
 ### Error: "the server has asked for the client to provide credentials"

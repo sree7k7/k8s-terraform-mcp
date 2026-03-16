@@ -51,14 +51,13 @@ module "vpc" {
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
 
-  enable_nat_gateway = false # true when you need outbound internet access for private subnets (e.g. for EKS nodes to pull images)
-  single_nat_gateway = false # Saves money in dev/learning environments
+  enable_nat_gateway = false 
+  single_nat_gateway = false 
   map_public_ip_on_launch = true
 
-  # Tags required for Load Balancer Controller
   public_subnet_tags = {
     "kubernetes.io/role/elb" = 1
-    "karpenter.sh/discovery" = var.cluster_name # Required for Karpenter to discover these subnets
+    "karpenter.sh/discovery" = var.cluster_name
   }
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
@@ -68,12 +67,13 @@ module "vpc" {
 # 2. The Cluster Layer
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.0"
+  version = "~> 20.10.0"
 
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
 
   # Network settings, connects the cluster to the VPC
+  # Place nodes and the control plane in private subnets for security
   vpc_id                   = module.vpc.vpc_id
   subnet_ids               = module.vpc.public_subnets
   control_plane_subnet_ids = module.vpc.public_subnets
@@ -83,8 +83,21 @@ module "eks" {
   cluster_endpoint_public_access           = true # Allows access to the cluster API from the internet (Required for EKS Anywhere / Remote Management)
   cluster_endpoint_private_access          = true # Allows access to the cluster API from within the VPC (Best Practice for security)
 
+  cloudwatch_log_group_retention_in_days = 1
+
   # OIDC Identity provider (Required for IRSA / Service Accounts)
   enable_irsa = true
+
+  # This section explicitly enables KMS encryption for Kubernetes secrets,
+  # which is a security best practice. It also gives you control over the key's lifecycle.
+  # When you run `terraform destroy`, AWS KMS keys are not deleted immediately
+  # but are scheduled for deletion after a "deletion window" (7-30 days).
+  # This is a safety feature. By setting `kms_key_deletion_window_in_days` to 7,
+  # you can speed up the deletion process in non-production environments.
+  cluster_encryption_config = {
+    resources = ["secrets"]
+  }
+  kms_key_deletion_window_in_days = 7
 
   # Standard EKS Add-ons (Best Practice to manage these here)
   cluster_addons = {
@@ -123,26 +136,12 @@ module "eks" {
     }
   }
 
-  # Grant your local AWS user admin access
-  # access_entries = {
-  #   sran_nice = {
-  #     principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.git_role_name}"
-  #     policy_associations = {
-  #       admin = {
-  #         policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-  #         access_scope = {
-  #           type = "cluster"
-  #         }
-  #       }
-  #     }
-  #   }
-  # }
 }
 
 
 module "eks_blueprints_addons" {
   source = "aws-ia/eks-blueprints-addons/aws"
-  version = "~> 1.16" # Always check for latest
+  version = "~> 1.16" 
 
   cluster_name      = module.eks.cluster_name
   cluster_endpoint  = module.eks.cluster_endpoint
@@ -152,49 +151,64 @@ module "eks_blueprints_addons" {
   # 1. Install Karpenter
   enable_karpenter = true
 
-  # 2. Configure Karpenter Settings
   karpenter = {
-    chart_version       = "1.0.0" # Use v1+ (The stable version)
+    chart_version       = "1.0.0" 
     repository_username = "public.ecr.aws/karpenter"
-    repository_password = ""      # Public repo, no password needed
+    repository_password = ""      
     values = [yamlencode({
-      replicas = 1 # Start with 1 replica for dev/learning, increase for production.
+      replicas = 1 
     })]
   }
   
   # Creates the IAM Role & Instance Profile for Karpenter nodes
   karpenter_node = {
-    create = true
+    create                   = true
+    iam_role_use_name_prefix = false
+    iam_role_name            = "KarpenterNodeRole-${module.eks.cluster_name}"
   }
 
-  # Creates the SQS queue for Spot termination handling
+  # RESTORED: Required for handling Spot instance terminations safely
   karpenter_sqs = {
     create = true
   }
-}
 
-## monitoring stack (Prometheus + Grafana)
-# 1. Create a dedicated namespace for monitoring
-resource "kubernetes_namespace_v1" "monitoring" {
-  metadata {
-    name = "monitoring"
-  }
-  depends_on = [module.eks]
-}
-
-# 2. Install the Prometheus & Grafana Bundle
-resource "helm_release" "kube_prometheus_stack" {
-  name       = "kube-prometheus-stack"
-  repository = "https://prometheus-community.github.io/helm-charts"
-  chart      = "kube-prometheus-stack"
-  namespace  = kubernetes_namespace_v1.monitoring.metadata[0].name
+  # 2. Install Prometheus & Grafana
+  enable_kube_prometheus_stack = true
   
-  # Set it to wait until the cluster is fully ready before installing
-  depends_on = [module.eks, kubernetes_namespace_v1.monitoring]
-
-  # Optional: Disable alertmanager for a lighter dev setup, or keep it true for production
-  set {
-    name  = "alertmanager.enabled"
-    value = "false" 
+  kube_prometheus_stack = {
+    namespace        = "monitoring"
+    create_namespace = true
+    values = [yamlencode({
+      alertmanager = { enabled = false } 
+    })]
   }
+}
+
+# 1. This reads your file and automatically splits it into separate documents
+data "kubectl_file_documents" "karpenter_manifests" {
+  content = file("${path.module}/karpenter.yaml")
+}
+
+# 2. This loops through the split documents and applies them one by one
+resource "kubectl_manifest" "karpenter_resources" {
+  for_each  = data.kubectl_file_documents.karpenter_manifests.manifests
+  yaml_body = each.value
+
+  # Still strictly waiting for Karpenter to be installed first
+  depends_on = [module.eks_blueprints_addons]
+}
+
+resource "null_resource" "update_kubeconfig" {
+  depends_on = [module.eks]
+
+  provisioner "local-exec" {
+    command = "aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_name}"
+  }
+}
+
+# Tells the EKS Control Plane to allow Karpenter nodes to join the cluster
+resource "aws_eks_access_entry" "karpenter_node_access" {
+  cluster_name  = module.eks.cluster_name
+  principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/KarpenterNodeRole-${module.eks.cluster_name}"
+  type          = "EC2_LINUX"
 }

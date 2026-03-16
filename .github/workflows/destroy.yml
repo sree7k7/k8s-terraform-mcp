@@ -1,46 +1,46 @@
-name: "Terraform Destroy"
+# name: "Terraform Destroy"
 
-on:
-  workflow_dispatch: # This makes it a manual button in GitHub UI
+# on:
+#   workflow_dispatch: # This makes it a manual button in GitHub UI
 
-permissions:
-  id-token: write
-  contents: read
+# permissions:
+#   id-token: write
+#   contents: read
 
-jobs:
-  destroy:
-    name: "Destroy Infrastructure"
-    runs-on: ubuntu-latest
+# jobs:
+#   destroy:
+#     name: "Destroy Infrastructure"
+#     runs-on: ubuntu-latest
     
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+#       - name: Configure AWS Credentials
+#         uses: aws-actions/configure-aws-credentials@v4
+#         with:
+#           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+#           aws-region: us-east-1
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+#       - name: Setup Terraform
+#         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-          terraform init -backend-config="bucket=k8s-terraform-mcp-state-${ACCOUNT_ID}"
+#       - name: Terraform Init
+#         run: |
+#           ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+#           terraform init -backend-config="bucket=k8s-terraform-mcp-state-${ACCOUNT_ID}"
 
-      # 1. Connect to the cluster
-      - name: Update Kubeconfig
-        run: aws eks update-kubeconfig --region us-east-1 --name edge-cluster
+#       # 1. Connect to the cluster
+#       - name: Update Kubeconfig
+#         run: aws eks update-kubeconfig --region us-east-1 --name edge-cluster
 
-      # 2. THE CRITICAL ADDITION: Nuke Karpenter nodes first
-      - name: Terminate Karpenter Ghost Nodes
-        run: |
-          kubectl delete nodepool --all --ignore-not-found
-          kubectl delete ec2nodeclass --all --ignore-not-found
-          sleep 60 # Give AWS a minute to actually terminate the EC2 instances
+#       # 2. THE CRITICAL ADDITION: Nuke Karpenter nodes first
+#       - name: Terminate Karpenter Ghost Nodes
+#         run: |
+#           kubectl delete nodepool --all --ignore-not-found
+#           kubectl delete ec2nodeclass --all --ignore-not-found
+#           sleep 60 # Give AWS a minute to actually terminate the EC2 instances
 
-      # 3. Proceed with normal Terraform Destroy
-      - name: Terraform Destroy
-        run: terraform destroy -auto-approve
+#       # 3. Proceed with normal Terraform Destroy
+#       - name: Terraform Destroy
+#         run: terraform destroy -auto-approve
